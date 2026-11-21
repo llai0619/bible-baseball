@@ -1,0 +1,20 @@
+{
+  "name": "bible-baseball",
+  "version": "1.0.0",
+  "description": "棒球計分式聖經問答遊戲 (Bible Baseball) - 結合棒球規則與聖經四層次查經的互動計分競賽系統",
+  "main": "index.html",
+  "scripts": {
+    "start": "python -m http.server 3000",
+    "serve": "npx serve -l 3000 ."
+  },
+  "keywords": [
+    "bible-study",
+    "baseball",
+    "sunday-school",
+    "bsf",
+    "interactive-scoreboard",
+    "trivia"
+  ],
+  "author": "Bible Baseball Team",
+  "license": "MIT"
+}
