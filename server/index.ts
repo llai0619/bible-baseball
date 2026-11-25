@@ -52,6 +52,36 @@ app.post('/api/bank-import',(req,res)=>{const data=req.body;if(data?.format!=='b
 function portableQuestion(raw:any,b:any):Question{return {id:randomUUID(),bankId:b.id,type:raw?.type,prompt:raw?.prompt,options:raw?.type<=2?raw?.options:undefined,answer:raw?.answer,explanation:raw?.explanation,rubric:raw?.rubric,reference:raw?.reference,crossReferences:raw?.crossReferences,scripture:raw?.scripture,sourceUrls:raw?.sourceUrls,status:raw?.status??'draft',demo:b.demo};}
 app.post('/api/banks/:id/questions',(req,res)=>{const b=banks.find(b=>b.id===req.params.id&&!b.deletedAt);if(!b)return res.status(404).json({error:'not_found'});const q=portableQuestion(req.body,b);validateQuestion(q);if(!['draft','approved','disabled'].includes(q.status))throw Error('invalid_status');save('question',q);questions.push(q);res.json(q);});
 // Archive rather than destroy question records required by existing games.
+// Sharing creates an independent snapshot; game and generation records stay private.
+app.post('/api/banks/:id/share',(req,res)=>{
+ const source=banks.find(b=>b.id===req.params.id&&!b.deletedAt);
+ if(!source)return res.status(404).json({error:'not_found'});
+ const email=typeof req.body.email==='string'?req.body.email.trim().toLowerCase():'';
+ if(!email||email.length>254||! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:'invalid_email'});
+ const recipient:any=db.prepare('SELECT id FROM users WHERE email=? AND verified=1').get(email);
+ if(!recipient)return res.status(400).json({error:'transfer_recipient_missing'});
+ if(recipient.id===source.ownerId)return res.status(400).json({error:'transfer_self'});
+ if(jobs.some(j=>j.bankId===source.id&&j.status==='running'))return res.status(409).json({error:'generation_running'});
+ const bank={...structuredClone(source),id:randomUUID(),ownerId:recipient.id};
+ const copies=questions.filter(q=>q.bankId===source.id).map(q=>({...structuredClone(q),id:randomUUID(),bankId:bank.id}));
+ db.exec('BEGIN IMMEDIATE');try{save('bank',bank);for(const q of copies)save('question',q);db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
+ banks.push(bank);questions.push(...copies);res.json({ok:true});
+});
+app.post('/api/banks/:id/transfer',(req,res)=>{
+ const b=banks.find(b=>b.id===req.params.id&&!b.deletedAt);
+ if(!b)return res.status(404).json({error:'not_found'});
+ const email=typeof req.body.email==='string'?req.body.email.trim().toLowerCase():'';
+ if(!email||email.length>254||! /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return res.status(400).json({error:'invalid_email'});
+ const recipient:any=db.prepare('SELECT id FROM users WHERE email=? AND verified=1').get(email);
+ if(!recipient)return res.status(400).json({error:'transfer_recipient_missing'});
+ if(recipient.id===b.ownerId)return res.status(400).json({error:'transfer_self'});
+ if(jobs.some(j=>j.bankId===b.id&&j.status==='running'))return res.status(409).json({error:'generation_running'});
+ if(games.some(g=>g.bankId===b.id&&g.phase!=='finished'))return res.status(409).json({error:'transfer_game_active'});
+ const changes:[string,any][]=[['bank',b],...jobs.filter(j=>j.bankId===b.id).map(j=>['job',j] as [string,any])];
+ db.exec('BEGIN IMMEDIATE');try{for(const [kind,item] of changes)save(kind,{...item,ownerId:recipient.id});db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}
+ for(const [,item] of changes)item.ownerId=recipient.id;
+ res.json({ok:true});
+});
 app.post('/api/banks/:id/delete',(req,res)=>{const b=banks.find(b=>b.id===req.params.id&&!b.deletedAt);if(!b)return res.status(404).json({error:'not_found'});if(jobs.some(j=>j.bankId===b.id&&j.status==='running'))return res.status(409).json({error:'generation_running'});const archived={...b,deletedAt:new Date().toISOString()};save('bank',archived);Object.assign(b,archived);res.json({ok:true});});
 app.post('/api/banks/:id/approve-all',(req,res)=>{if(!banks.some(b=>b.id===req.params.id&&!b.deletedAt))throw Error('not_found');const pending=questions.filter(q=>q.bankId===req.params.id&&q.status==='draft');if(pending.some(q=>games.some(g=>g.phase!=='finished'&&g.questionId===q.id)))throw Error('question_in_use');pending.forEach(validateQuestion);db.exec('BEGIN');try{for(const q of pending)save('question',{...q,status:'approved'});db.exec('COMMIT');}catch(e){db.exec('ROLLBACK');throw e;}for(const q of pending)q.status='approved';res.json({approved:pending.length});});
 app.post('/api/questions/:id',(req,res)=>{const q=questions.find(q=>q.id===req.params.id);if(!q)return res.status(404).json({error:'not_found'});if(games.some(g=>g.phase!=='finished'&&g.questionId===q.id))return res.status(409).json({error:'question_in_use'});const updated={...req.body,id:q.id,bankId:q.bankId,demo:q.demo};validateQuestion(updated);if(!['draft','approved','disabled'].includes(updated.status))throw Error('invalid_status');Object.assign(q,updated);save('question',q);res.json(q);});

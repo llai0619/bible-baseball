@@ -30,5 +30,36 @@ test('bank transfer and manual questions preserve content, isolate ownership and
   const after=(await request('/api/dashboard')).data;assert.equal(after.banks.length,before.banks.length);assert.equal(after.questions.length,before.questions.length);
   assert.equal((await request(`/api/banks/${bank.id}/export`,undefined,false)).status,401);
   const {chromium}=await import('playwright');const browser=await chromium.launch();try{const context=await browser.newContext();await context.addCookies([{name:'session',value:'test-session',url:base}]);const page=await context.newPage();await page.goto(base+'/admin');await page.getByRole('button',{name:'手動增加題目',exact:true}).click();await page.getByLabel('題型',{exact:true}).selectOption('3');assert.equal(await page.getByRole('heading',{name:'手動增加題目 · 三壘安打'}).count(),1);await page.screenshot({path:'transfer-preview.png',fullPage:true});}finally{await browser.close();}
+  const accounts=new DatabaseSync(path.join(dir,'baseball.sqlite'));
+  accounts.prepare('INSERT INTO users VALUES(?,?,?,1)').run('recipient','recipient@example.com','unused');
+  accounts.prepare('INSERT INTO account_sessions VALUES(?,?,?)').run('recipient-session','recipient',Date.now()+60000);accounts.close();
+  const share=`/api/banks/${bank.id}/share`;
+  const recipientCall=async(url:string,body?:any)=>{const r=await fetch(base+url,{method:body?'POST':'GET',headers:{Cookie:'session=recipient-session','Content-Type':'application/json'},body:body?JSON.stringify(body):undefined});return {status:r.status,data:await r.json()};};
+  assert.equal((await request(share,{email:'recipient@example.com'},false)).status,401);
+  assert.equal((await recipientCall(share,{email:'test@example.com'})).status,404);
+  for(const email of ['invalid','missing@example.com','test@example.com'])assert.equal((await request(share,{email})).status,400);
+  assert.equal((await request(share,{email:' Recipient@Example.com '})).status,200);
+  const receivedDash=(await recipientCall('/api/dashboard')).data;
+  const shared=receivedDash.banks[0],sharedQuestion=receivedDash.questions[0];
+  assert.notEqual(shared.id,bank.id);assert.notEqual(sharedQuestion.id,created.data.id);
+  assert.deepEqual((await recipientCall(`/api/banks/${shared.id}/export`)).data,file);
+  assert.equal(receivedDash.games.length,0);assert.equal(receivedDash.jobs.length,0);
+  assert.equal((await request(`/api/banks/${shared.id}/export`)).status,404);
+  assert.equal((await recipientCall(`/api/questions/${sharedQuestion.id}`,{...sharedQuestion,status:'approved'})).status,200);
+  assert.equal((await request(`/api/banks/${bank.id}/export`)).data.questions[0].status,'draft');
+  assert.equal((await recipientCall(`/api/banks/${shared.id}/delete`,{})).status,200);
+  assert.equal((await request(`/api/banks/${bank.id}/export`)).status,200);
+  const target=`/api/banks/${bank.id}/transfer`;
+  assert.equal((await request(target,{email:'recipient@example.com'},false)).status,401);
+  for(const email of ['bad','missing@example.com','test@example.com'])assert.equal((await request(target,{email})).status,400);
+  const game=(await request('/api/games',{bankId:bank.id,teams:['A','B'],innings:1,timers:[10,10,10,10]})).data;
+  assert.equal((await request(target,{email:'recipient@example.com'})).status,409);
+  assert.equal((await request(`/api/games/${game.id}/action`,{action:'end',version:game.version})).status,200);
+  assert.equal((await request(target,{email:' Recipient@Example.com '})).status,200);
+  assert.equal((await request(`/api/banks/${bank.id}/export`)).status,404);
+  assert.equal((await request(`/api/questions/${created.data.id}`,{...q,status:'approved'})).status,404);
+  const received=await fetch(base+`/api/banks/${bank.id}/export`,{headers:{Cookie:'session=recipient-session'}});
+  assert.equal(received.status,200);assert.deepEqual(await received.json(),file);
+  assert.equal((await request(`/api/games/${game.id}?host=1`)).status,200);
  }finally{if(child.exitCode===null){child.kill('SIGKILL');await new Promise(r=>child.once('exit',r));}rmSync(dir,{recursive:true,force:true});}
 });

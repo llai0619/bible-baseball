@@ -81,7 +81,7 @@ The smoke script creates a disposable functional acceptance game and completes t
 
 ## Accounts and Email delivery
 
-Registration is enabled only when `SMTP_HOST` and `SMTP_FROM` are configured. Set `SMTP_PORT=587` and `SMTP_SECURE=false` for required STARTTLS, or port 465 and `SMTP_SECURE=true` for implicit TLS. Set `SMTP_USER` and `SMTP_PASSWORD` when the server requires authentication. Certificate verification remains enabled. Store credentials only in the private server environment; never commit them. SMTP credentials have not been supplied or tested by this implementation.
+Registration is enabled only when `SMTP_HOST` and `SMTP_FROM` are configured. Set `SMTP_PORT=587` and `SMTP_SECURE=false` for required STARTTLS, or port 465 and `SMTP_SECURE=true` for implicit TLS. Set `SMTP_USER` and `SMTP_PASSWORD` when the server requires authentication. Certificate verification remains enabled. Store credentials only in the private server environment; never commit them. Production SMTP authentication and registration-email delivery were verified on 2026-11-25. The operator confirmed actual registration-email receipt. A real password-recovery email was accepted by SMTP; its actual receipt remains to be confirmed.
 
 Registration and password recovery send six-digit codes valid for ten minutes, with at most five incorrect attempts. Resends require 60 seconds and replace the previous code. Password recovery first verifies the code, then grants five minutes to set a new password. The reset grant is single-use and only kept in the browser's memory. Passwords support Chinese and spaces and must contain 12–128 Unicode characters. Changing or resetting a password signs out every device and closes host WebSockets. Sessions otherwise expire after twelve hours. Account settings provide password changes and legacy-data claiming. Viewers still use public watch links without signing in.
 
@@ -102,3 +102,11 @@ The private `data/auth-secret` file protects verification-code/reset-grant diges
 `npm run build` builds the frontend/backend and checks types. `npm test` runs account, ownership, gameplay and generation tests, including a browser registration/recovery flow with an injected test mail sender. `node scripts/test-isolated.mjs` starts a disposable SQLite-backed server, runs the bilingual/mobile browser checks and gameplay smoke acceptance, then removes its temporary data. It never uses the production database or sends mail.
 
 For manual checks against a configured deployment, create a dedicated verified test account and set private `TEST_EMAIL` and `TEST_PASSWORD` (environment variables or `.env`), then run the existing smoke/browser commands with `TEST_URL`. Do not use `ADMIN_PASSWORD` for these checks. The recovery script restarts the production app and must only be run intentionally as an operational check. Mocked/test mail delivery does not establish real SMTP receipt.
+
+### 帳號間轉移題庫
+
+選擇題庫，展開「轉移題庫」，輸入系統內已完成 Email 驗證的其他帳號 Email，確認後送出。題目、審核狀態及生成紀錄一併轉移，原帳號失去題庫管理權；已結束比賽保留原帳號。正在生成或有未結束比賽時不可轉移。
+
+### 分享題庫並各自管理
+
+選擇題庫 → 展開「分享題庫」→ 輸入其他已驗證帳號 Email → 確認。接收者取得題庫的獨立副本（含全部題目及審核狀態），雙方可各自修改、刪除、建立比賽，後續修改不會同步。比賽與生成紀錄不分享，正在出題時暫停分享。原有「轉移題庫」仍用於交出管理權。
