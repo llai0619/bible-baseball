@@ -1,0 +1,8 @@
+{
+  "name": "bible-baseball",
+  "main": "index.js",
+  "compatibility_date": "2026-11-24",
+  "workers_dev": true,
+  "preview_urls": false,
+  "vpc_services": [{"binding":"BASEBALL_ORIGIN","service_id":"01a20bea-9864-7d03-9594-a2d4f0294f3c"}]
+}

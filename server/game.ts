@@ -1,0 +1,29 @@
+import { randomUUID } from 'node:crypto';
+export type Lang='zh'|'en';
+export type Text={zh:string,en:string};
+export type Question={id:string,bankId:string,type:number,prompt:Text,options?:Text[],answer:Text,explanation:Text,rubric:Text,reference:string,crossReferences:string[],scripture:Text,sourceUrls:string[],status:'draft'|'approved'|'disabled',demo?:boolean};
+export type Game={id:string,ownerId?:string,bankId:string,teams:string[],innings:number,inning:number,half:number,outs:number,bases:boolean[],scores:number[][],phase:string,questionId:string|null,used:string[],revealed:boolean,judged:boolean,deadline:number|null,remaining:number,paused:boolean,timers:number[],reciteLang:Lang,history:any[],undo:any,result:string,version:number};
+export const defaultCounts=(n:number)=>[4,3,2,1].map(v=>v*n*3);
+export function createGame(bankId:string,teams:string[],innings=3,timers=[15,15,30,45]):Game{return {id:randomUUID(),bankId,teams,innings,inning:1,half:0,outs:0,bases:[false,false,false],scores:[Array(innings).fill(0),Array(innings).fill(0)],phase:'idle',questionId:null,used:[],revealed:false,judged:false,deadline:null,remaining:0,paused:false,timers,reciteLang:'zh',history:[],undo:null,result:'',version:0};}
+export function tick(g:Game,now=Date.now()) {if(!g.deadline||g.paused||now<g.deadline)return false;if(g.phase==='prepare'){const end=g.deadline+g.timers[3]*1000;g.phase='answer';g.deadline=end;g.remaining=g.timers[3]*1000;if(now>=end){g.deadline=null;g.remaining=0;g.phase='timeout';}}else {g.deadline=null;g.remaining=0;g.phase='timeout';}g.version++;return true;}
+function fail(s:string):never{throw Error(s);}
+export function act(g:Game,action:string,p:any,qs:Question[],now=Date.now()){
+ tick(g,now);const q=qs.find(q=>q.id===g.questionId);
+ if(g.phase==='finished'&&!['extra','undo'].includes(action))fail('game_finished');
+ switch(action){
+ case 'select':{if(g.questionId)fail('finish_current_question');const available=qs.filter(q=>q.bankId===g.bankId&&q.type===Number(p.type)&&q.status==='approved'&&!g.used.includes(q.id));if(!available.length)fail('no_questions');const chosen=available[Math.floor(Math.random()*available.length)];g.questionId=chosen.id;g.used.push(chosen.id);g.phase='preview';g.revealed=false;g.judged=false;g.undo=null;g.reciteLang=p.lang==='en'?'en':'zh';break;}
+ case 'start':if(!q||g.phase!=='preview')fail('invalid_phase');g.phase=q.type===4?'prepare':'answer';g.remaining=(q.type===4?5:g.timers[q.type-1])*1000;g.deadline=now+g.remaining;g.paused=false;break;
+ case 'pause':case 'stop':if(!g.deadline)fail('timer_not_running');g.remaining=Math.max(0,g.deadline-now);g.deadline=null;g.paused=true;break;
+ case 'resume':if(!g.paused||g.judged||!['prepare','answer'].includes(g.phase))fail('invalid_phase');g.deadline=now+g.remaining;g.paused=false;break;
+ case 'extend':{if(!['prepare','answer','timeout'].includes(g.phase)||g.judged)fail('invalid_phase');const seconds=Number(p.seconds);if(!Number.isFinite(seconds)||seconds<=0||seconds>300)fail('invalid_time');if(g.phase==='timeout'){g.phase='answer';g.remaining=0;g.paused=true;}if(g.deadline)g.deadline+=seconds*1000;else g.remaining+=seconds*1000;break;}
+ case 'judge':{if(!q||g.judged||!['answer','timeout'].includes(g.phase))fail('invalid_phase');g.undo=JSON.parse(JSON.stringify({...g,history:[],undo:null}));g.deadline=null;g.paused=false;g.judged=true;g.phase='judged';let runs=0;if(p.correct===true){const distance=q.type;g.bases.forEach((occupied,i)=>{if(occupied&&i+1+distance>=4)runs++;});const bases=[false,false,false];g.bases.forEach((occupied,i)=>{if(occupied&&i+1+distance<4)bases[i+distance]=true;});if(distance===4)runs++;else bases[distance-1]=true;g.bases=bases;g.scores[g.half][g.inning-1]+=runs;}else g.outs++;g.history.push({at:now,questionId:q.id,type:q.type,correct:p.correct===true,runs,inning:g.inning,half:g.half});break;}
+ case 'reveal':if(!g.judged)fail('judge_first');g.revealed=true;break;
+ case 'next':if(!g.revealed||!g.judged)fail('reveal_first');g.questionId=null;g.revealed=false;g.judged=false;g.phase='idle';g.undo=null;if(g.outs>=3){g.outs=0;g.bases=[false,false,false];if(g.half===0)g.half=1;else {g.half=0;g.inning++;if(g.inning>g.innings){g.phase='finished';g.result=total(g,0)===total(g,1)?'tie':'complete';}}}break;
+ case 'undo':{if(!g.undo)fail('nothing_to_undo');const history=g.history;const version=g.version;const undo=g.undo;Object.assign(g,undo);g.history=history;g.history.push({at:now,action:'undo'});g.undo=null;g.version=version;g.deadline=null;g.paused=true;break;}
+ case 'end':g.phase='finished';g.result='early';g.deadline=null;g.paused=false;g.history.push({at:now,action:'end'});break;
+ case 'extra':if(g.phase!=='finished'||g.result!=='tie')fail('not_tied');g.innings++;g.scores.forEach(s=>s.push(0));g.phase='idle';g.result='';g.half=0;g.outs=0;g.bases=[false,false,false];break;
+ default:fail('unknown_action');}
+ g.version++;return g;
+}
+export const total=(g:Game,team:number)=>g.scores[team].reduce((a,b)=>a+b,0);
+export function publicState(g:Game,qs:Question[],admin=false){const q=qs.find(q=>q.id===g.questionId);const visible=q&&g.phase!=='preview';const question=admin?q:visible?{id:q.id,type:q.type,prompt:q.prompt,options:q.options,reference:q.reference,...(q.type!==4||g.phase==='prepare'||g.revealed?{scripture:q.scripture}:{}),...(g.revealed?{answer:q.answer,explanation:q.explanation,crossReferences:q.crossReferences,sourceUrls:q.sourceUrls}:{}),demo:q.demo}:null;return {...g,ownerId:undefined,undo:undefined,used:admin?g.used:undefined,history:admin||g.phase==='finished'?g.history:undefined,question,celebration:g.judged&&g.history.at(-1)?.correct===true,serverNow:Date.now(),available:[1,2,3,4].map(type=>qs.filter(q=>q.bankId===g.bankId&&q.type===type&&q.status==='approved'&&!g.used.includes(q.id)).length)};}

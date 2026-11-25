@@ -1,106 +1,104 @@
-# 棒球計分式聖經問答遊戲 (Bible Baseball) ⚾📖
+# 棒球查經 / Bible Baseball
 
-這是一套將**棒球比賽規則**與**聖經問答**結合的團隊學習互動系統。特別適合教會團契、主日學、青少契及 BSF Student Program，讓學生在趣味競賽中複習經文、理解真理並練習生活應用。
+React + TypeScript + Node.js 24 + SQLite + WebSocket. Application and data live on `172.16.0.103`; Cloudflare Workers VPC routes the public Worker to the existing private Tunnel. No public origin hostname is necessary with the VPC binding.
 
----
+## Production
 
-## 🌟 核心特色
+- Host console: https://bible-baseball.llai.workers.dev/admin
+- Watch: create/open a game in the console and share its QR code or `/watch/:gameId` link.
+- Server checkout: `/home/llai/bible-baseball`
+- Data: `/home/llai/bible-baseball/data/baseball.sqlite` on local XFS.
+- Accounts: hosts sign in with a verified Email and individual password. `ADMIN_PASSWORD` is retained only for one-time legacy-data claiming; it no longer signs in. Never publish the private project `.env`. The existing OpenAI key is retained there; do not put it in the frontend or Worker.
+- Primary generation: Ollama `gemma4:31b` over the private `ollama-secure` Docker network. Each batch has a 180-second wall-clock timeout including queueing, loading and response reading. A timeout, unreachable service, or invalid JSON response triggers OpenAI for that batch only. OpenAI has no automatic retries. The next batch tries Ollama again. Job progress records the active provider/model and fallback reason.
+- Fallback OpenAI configuration: `OPENAI_MODEL=gpt-4.1-mini`, Responses API, `store:false`. A minimal synthetic request verified the key and model. Real Scripture generation remains gated below.
 
-1. **動態棒球場與發光壘包**：
-   - 擬真內外野棒球場草皮與紅土設計。
-   - 一壘、二壘、三壘與本壘壘包動態發光與跑者圖標。
-   - 支援依棒球規則真實推進跑壘（1B、2B、3B、HR），亦可手動點選壘包修正跑者。
-2. **電子箱型計分板 (Line Scoreboard)**：
-   - LED 數位記分看板，實時記錄兩隊每局得分、總得分 (R)、安打數 (H)。
-   - 3 顆紅光出局指示燈 (Outs: 0~3)，滿 3 出局自動清空壘包並切換攻守隊伍。
-   - 支援自訂隊伍名稱（點擊隊名即可編輯）。
-3. **四難度聖經題組系統**：
-   - 🟢 **一壘安打 (1B) - 經文事實 (Fact)**：5W1H 人名、地名、動作與字面記載。
-   - 🔵 **二壘安打 (2B) - 經文理解 (Comprehension)**：探討原因（為什麼）、比喻含意與核心教導。
-   - 🟠 **三壘安打 (3B) - 經文整合 (Synthesis)**：前後文因果邏輯、神學思想與貫串歸納。
-   - 🟣 **全壘打 (HR) - 生活應用 (Application)**：基督徒生活反思、實踐行動與生命更新。
-4. **指定聖經範圍自動產生器**：
-   - 支援聖經 66 卷書卷選擇與章節範圍指定。
-   - 內建四層次認知架構生成引擎，貼上經文或點擊一鍵即可自動產出完整題組。
-   - 支援自訂題目編輯、JSON 題庫匯入與匯出。
-5. **內建豐富題庫庫存**：
-   - 《羅馬書 6:1–11》（向罪死、向神活，完全符合專案指定範例）
-   - 《創世記 1:1–31》（天地創造與神的形象）
-   - 《詩篇 23:1–6》（耶和華是我的牧者）
-   - 《馬太福音 5:1–12》（天國八福）
-   - 《約翰福音 3:1–21》（重生與神愛世人）
-   - 《腓立比書 4:4–13》（靠主喜樂與出人意外的平安）
-6. **零依賴・離線即用**：
-   - 無需繁瑣安裝套件，雙擊 `index.html` 即可在瀏覽器完整運行。
-   - 內建 Web Audio API 音效合成引擎（清脆打擊聲、上壘旋律、全壘打號角、出局哨音）。
-   - 具備大螢幕投影模式 (Projector Mode) 與全螢幕支援，適配教會投影機與大電視。
-   - 具備復原上一步 (Undo) 功能，不怕老師誤觸按鍵。
+## Run locally
 
----
+Use Node.js 24 or later. Copy `.env.example` to `.env` only for a fresh installation; never overwrite an existing `.env`. Set the legacy administrator password, origin secret and SMTP settings, then run:
 
-## 📋 遊戲基本規則
-
-| 項目 | 建議設定 |
-| :--- | :--- |
-| **參與人數** | 8–20 人 |
-| **分組方式** | 兩隊（客隊先攻、主隊後攻），輪流攻守 |
-| **遊戲時間** | 30–45 分鐘 |
-| **比賽局數** | 標準 3 局，每局包含上下半局 |
-| **出局規則** | 每隊累積 3 個出局數換邊攻守 |
-| **得分方式** | 跑者踩過三壘回到本壘得 1 分 |
-| **主持人** | 1 位老師或輔導，兼任裁判 |
-
----
-
-## 🎯 題組難度與推進機制
-
-| 安打類型 | 問題類型 | 羅馬書 6:1–11 範例 | 跑壘推進規則 |
-| :--- | :--- | :--- | :--- |
-| **🟢 一壘 (1B)** | **經文事實** | 保羅在第 2 節如何回答「可以繼續犯罪嗎」？ | 打者上一壘；三壘跑者回本壘得 1 分；一、二壘跑者各推進一個壘包。 |
-| **🔵 二壘 (2B)** | **經文理解** | 為什麼受洗象徵與基督同死、同埋葬？ | 打者上二壘；二、三壘跑者回本壘得分；一壘跑者推進至三壘。 |
-| **🟠 三壘 (3B)** | **經文整合** | 第 6–7 節如何解釋罪不再作我們的主人？ | 打者上三壘；壘上所有跑者全部回本壘得分。 |
-| **🟣 全壘打 (HR)** | **生活應用** | 根據第 11 節，信徒如何在日常生活中向罪看自己是死的？ | 打者連同壘上所有跑者全部回本壘得分，壘包清空（滿壘時為 4 分大滿貫！）。 |
-| **❌ 出局 (OUT)** | **回答錯誤** | 學生回答不正確或超過思考時限 | 出局數 +1，跑者不推進；累積滿 3 出局自動換隊進攻。 |
-
----
-
-## 🚀 快速開始使用
-
-### 方式一：直接在瀏覽器開啟（最推薦，零配置）
-在 Windows 檔案總管中，直接對 `index.html` 按兩下，以 Edge、Chrome、Brave 或 Firefox 開啟即可立即遊玩！
-
-### 方式二：使用本機伺服器
-在專案目錄下透過 PowerShell 執行：
 ```powershell
-# 透過 Python 快速啟動
-python -m http.server 3000
-
-# 或透過 Node / npx
-npx serve -l 3000 .
+npm ci
+npm run build
+npm start
 ```
-接著在瀏覽器打開 `http://localhost:3000`。
 
----
+The origin secret protects direct HTTP access. For local browser development, omit `ORIGIN_SECRET` in a separate local-only environment; do not remove it from production. Build output is served by the Node backend, not Vite. `npm run dev` is for frontend development only; configure a local proxy if using it against the backend.
 
-## 📖 現場主持流程教學（給老師／輔導）
+## Host workflow
 
-1. **分組與隊名設定**：
-   - 點擊計分板上的「客隊 (A隊)」與「主隊 (B隊)」，輸入學生自訂隊名（如「保羅隊 vs 彼得隊」）。
-2. **打者選題**：
-   - 輪到打擊隊伍的第一棒學生，請學生選擇要挑戰的安打難度（例如：「我要挑戰二壘安打理解題！」）。
-3. **出題與回答**：
-   - 老師點擊畫面上對應的按鈕（如【🔵 二壘安打】），螢幕跳出大字體題目卡。
-   - 學生進行回答，老師可點擊「👁️ 顯示參考解答與經文依據」核對要點。
-4. **判定結果**：
-   - 答對：點擊【✅ 回答正確】，系統自動播放擊球與上壘音效、推進壘包並計算得分。
-   - 答錯：點擊【❌ 回答錯誤】，系統記錄 1 次出局並播放出局音效；3 出局時自動廣播攻守換邊。
-5. **三局終局與頒獎**：
-   - 完成三局下半後，系統自動跳出結算頒獎畫面與提摩太後書 4:7 金句勉勵，帶領全體禱告結束。
+1. Register with Email and a 12–128-character password, verify the six-digit emailed code, then sign in. Choose Chinese or English in the top-right menu. Each account manages its own question banks and games.
+2. Create a bank with a passage range. Fetch CUV/NIV and add verified cross-reference passages for triples.
+3. Set innings and question targets. Defaults are `[12,9,6,3] × innings`; manually edited targets survive inning changes. Restore defaults resets all four. Existing questions are never deleted by changing these settings.
+4. Generate in batches of up to four. Progress and failed quantities are persisted. Retry the generation button to fill the same targets; existing drafts and approved questions count toward them.
+5. Review both languages, exact quotations, option letters, explanation and references. Edit, approve or disable each question. Inadequate passages are allowed to return fewer questions instead of fabricating content.
+6. Enter first-batting and second-batting team names, select timers, and create the game. Share the watch URL or QR code, not the host screen.
+7. Draw a difficulty, preview the answer, then start. Home runs display the selected translation for exactly five preparation seconds, then hide it for the 45-second recitation countdown. Changing interface language does not change the chosen recitation translation.
+8. Stop the timer when the oral answer is complete. Rule correct/incorrect, then reveal. Discuss before moving to the next question. Three outs switch sides only after reveal and next.
+9. Use undo to correct the last ruling before advancing. At the end of a tied game add an extra inning or leave the result as a tie. End early requires confirmation.
 
----
+Each device remembers its own UI language. Viewer answers are withheld server-side until reveal. Browser autoplay requires clicking Enable sound. Encouragement tones are synthesized locally using Web Audio and contain no third-party music.
 
-## 🛠️ 技術架構
-- 前端架構：HTML5 + Vanilla Modern JavaScript + Tailwind CSS
-- 動態視覺：向量 SVG 棒球場地圖 + CSS3 壘包發光動畫
-- 音訊引擎：Web Audio API 自建即時合成音效（完全無需外部音訊資源）
-- 資料儲存：LocalStorage 本地題庫持久化 + JSON 規格交換
+## Scripture and AI permission gate
+
+The default `SCRIPTURE_LICENSE_CONFIRMED=false` disables Bible Gateway fetching and Bible-based AI generation. Production was enabled on 2026-11-24 after the operator explicitly confirmed permissions; Romans 6:12-23 was fetched successfully in both translations. The deployed site offers an explicitly labelled synthetic baseball-rules demo, not an approved Bible study bank. Do not claim this test bank contains Bible quotations or theological review.
+
+After the operator has confirmed an allowed automated source access method and the required Biblica permissions for the intended NIV/AI use, set `SCRIPTURE_LICENSE_CONFIRMED=true` on the server and recreate the app container. The flag records the operator's configuration; it does not grant a license. Keep the evidence outside the public web directory.
+
+- https://www.biblegateway.com/legal/terms/
+- https://www.biblica.com/permissions/
+
+## Operations
+
+```sh
+cd /home/llai/bible-baseball
+docker compose ps
+docker compose logs --tail=100 app
+docker compose exec -T app node scripts/backup.mjs
+```
+
+Daily backup uses SQLite `VACUUM INTO`, retaining the seven newest backups in `data/backups`. Backups contain session records and are private.
+
+Before an update, make a backup and tag the current image `bible-baseball-app:previous`. Then run `docker compose up -d --build`. Deploy the Worker separately using `npx wrangler@4 deploy --config worker/wrangler.jsonc`; its `ORIGIN_SECRET` must match the origin `.env` and is set through standard-input secret provisioning. Only the origin secret goes to Cloudflare, never the OpenAI key or admin password.
+
+For rollback, tag the previous image back to `bible-baseball-app:latest` and run `docker compose up -d --no-build`; use `wrangler rollback` for the Worker if necessary. Restore a database backup only while the app is stopped, preserve a copy of the current database first, and do not leave mismatched WAL/SHM files alongside a restored database. Backup and restore files must retain UID/GID 1000 permissions for the container user. Restart and check `/api/health` plus a private host session.
+
+## Verification
+
+```powershell
+npm test
+npm run build
+node scripts/smoke.mjs
+npx playwright test tests/browser.spec.ts --reporter=line
+```
+
+The smoke script creates a disposable functional acceptance game and completes three innings. Set `TEST_URL` to run it against production. Playwright tests host/viewer isolation, bilingual UI, target-count behavior, answer reveal and mobile overflow, and saves screenshots. Automated testing does not substitute for human Scripture review or a physical room/projector/audio acceptance check.
+
+## 題庫管理
+
+「題庫審核」可匯出完整題庫為 JSON，或匯入匯出檔建立獨立題庫，保留審核狀態。上限 2 MB、2000 題；驗證失敗不儲存部分資料。
+
+按「手動增加題目」可選四種題型，填寫雙語題目、答案、解說、評分重點、經文及 Bible Gateway 來源網址。選擇題須四個雙語選項，三壘題須交叉經文。預設為待審核。
+
+## Accounts and Email delivery
+
+Registration is enabled only when `SMTP_HOST` and `SMTP_FROM` are configured. Set `SMTP_PORT=587` and `SMTP_SECURE=false` for required STARTTLS, or port 465 and `SMTP_SECURE=true` for implicit TLS. Set `SMTP_USER` and `SMTP_PASSWORD` when the server requires authentication. Certificate verification remains enabled. Store credentials only in the private server environment; never commit them. SMTP credentials have not been supplied or tested by this implementation.
+
+Registration and password recovery send six-digit codes valid for ten minutes, with at most five incorrect attempts. Resends require 60 seconds and replace the previous code. Password recovery first verifies the code, then grants five minutes to set a new password. The reset grant is single-use and only kept in the browser's memory. Passwords support Chinese and spaces and must contain 12–128 Unicode characters. Changing or resetting a password signs out every device and closes host WebSockets. Sessions otherwise expire after twelve hours. Account settings provide password changes and legacy-data claiming. Viewers still use public watch links without signing in.
+
+All bank/question editing, exports, game actions and host HTTP/WebSocket access require ownership. Importing creates a bank belonging to the importing account. Public watch and finished-game review links deliberately expose the existing viewer content; they do not grant management access.
+
+### Deployment and legacy data
+
+1. Before starting the new version, run the existing SQLite backup command and preserve the previous image. Do not replace `.env` or the existing `ADMIN_PASSWORD`.
+2. Add the SMTP environment settings, then build and recreate the app container. The migration adds account tables and clears old shared-password sessions. Existing banks, jobs and games remain intact and await claiming. The old password cannot sign in, including before claiming.
+3. Complete a real registration and check actual receipt of its code. Sign in with the verified Email and new personal password. In Account settings choose Claim existing data and provide the original `ADMIN_PASSWORD`. The first successful claim atomically receives all legacy banks, jobs and games; later claims are rejected. Newly registered accounts do not see unclaimed data. Account verification and personal password setup must be complete before claiming.
+4. Confirm the owner can open the old banks and games, and a second account cannot manage them. Use Forgot password and verify actual delivery of the recovery code, then complete code verification and password reset. Verify the old password and prior sessions fail, while a public watch link still works.
+5. Only advertise registration after those real delivery checks. Missing SMTP or delivery failure produces an explicit retry/configuration error; no code is printed to logs or exposed by an API.
+
+The private `data/auth-secret` file protects verification-code/reset-grant digests and is created once, then reused across restarts. Back up the whole private data directory as well as SQLite, preserving file ownership. Losing this secret invalidates outstanding codes and reset grants. The database contains password hashes and session tokens and must remain private. For rollback restore the pre-migration database with the app stopped using the existing restore procedure; rolling back only the image would remove account isolation.
+
+### Account verification commands
+
+`npm run build` builds the frontend/backend and checks types. `npm test` runs account, ownership, gameplay and generation tests, including a browser registration/recovery flow with an injected test mail sender. `node scripts/test-isolated.mjs` starts a disposable SQLite-backed server, runs the bilingual/mobile browser checks and gameplay smoke acceptance, then removes its temporary data. It never uses the production database or sends mail.
+
+For manual checks against a configured deployment, create a dedicated verified test account and set private `TEST_EMAIL` and `TEST_PASSWORD` (environment variables or `.env`), then run the existing smoke/browser commands with `TEST_URL`. Do not use `ADMIN_PASSWORD` for these checks. The recovery script restarts the production app and must only be run intentionally as an operational check. Mocked/test mail delivery does not establish real SMTP receipt.

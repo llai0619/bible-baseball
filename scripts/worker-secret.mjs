@@ -1,0 +1,2 @@
+import{readFileSync}from'node:fs';import{parseEnv}from'node:util';import{spawnSync}from'node:child_process';
+const {ORIGIN_SECRET}=parseEnv(readFileSync('.env','utf8'));if(!ORIGIN_SECRET)throw Error('Missing origin secret');const r=spawnSync('npx --yes wrangler@4 secret put ORIGIN_SECRET --config worker/wrangler.jsonc',{shell:true,input:ORIGIN_SECRET,encoding:'utf8'});console.log(r.stdout);if(r.status!==0){console.error(r.stderr);process.exit(1);}

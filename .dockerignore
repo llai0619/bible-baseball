@@ -1,0 +1,10 @@
+.env
+.env.*
+node_modules
+data
+credentials.txt
+dist
+.git
+*.tar.gz
+test-results
+playwright-report

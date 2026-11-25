@@ -1,0 +1,29 @@
+services:
+  app:
+    build:
+      context: .
+      network: host
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DATA_DIR: /app/data
+      PORT: 8816
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: gemma4:31b
+    volumes:
+      - ./data:/app/data:Z
+    ports:
+      - 127.0.0.1:8816:8816
+    networks:
+      default: {}
+      ollama: {}
+      tunnel:
+        ipv4_address: 172.30.103.19
+networks:
+  ollama:
+    external: true
+    name: ollama-secure
+  tunnel:
+    external: true
+    name: ntu-talkinghead-cloudflare-private
